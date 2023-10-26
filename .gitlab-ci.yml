@@ -1,0 +1,78 @@
+##### GitLab CI/CD + Terraform Cloud demo pipeline #####
+
+default: 
+  tags:
+    - petmigration-gitlab-runner-shell
+
+#variables
+variables:
+  ENVIRONMENT: "prd"
+  SUBSCRIPTION_ID: "88340066-b701-4192-8a36-8cec4399c292"
+  TFC_ORG: "PetMigration"
+  TFC_SSHKEY_NAME: "mc-components"
+  # Extracted from the device naming standard document
+  CLOUD_SERVICE_PROVIDER: "m" # 'a' for Amazon Web Service, 'm' for Microsoft Azure
+  ASSET: "it" # it (IT), bma (BMA), bmc (BMC), nswec (NSWEC), niw (Nickel West), od (Olympic Dam), waio (WAIO), mel (Minera Escondida Limitada), pn (Pampa Norte), ptsh (Potash), apu (APU), ttpu (TTPU), gompu (GoMPU), cs (Closed Sites).
+  # Azure REGIONS        BHP CLOUD REGION IDENTIFIER
+  # "Australia East"       = "aue1" // New South Wales 
+  # "Australia South East" = "ause" // Victoria
+  # "North Central US"     = "usnc" // Illinois
+  # "South Central US"     = "ussc" // Texas
+  REGION: "ussc"
+
+#define stages
+stages:
+  - validate
+  - setup_workspace
+
+# The before_script runs before any job in any stage.
+before_script:
+  - echo "CI_PROJECT_ID:${CI_PROJECT_ID}"
+  - echo "CI_PROJECT_PATH:${CI_PROJECT_PATH}"
+  - echo "CI_PROJECT_NAMESPACE:${CI_PROJECT_NAMESPACE}"
+  - echo "CI_PIPELINE_ID:${CI_PIPELINE_ID}"
+  - echo "CI_JOB_ID:${CI_JOB_ID}"
+  - echo "CI_COMMIT_REF_NAME:${CI_COMMIT_REF_NAME}"
+  - echo "CI_PROJECT_TITLE:${CI_PROJECT_TITLE}"
+  - PROJECT_TITLE=$(echo "${CI_PROJECT_TITLE}" | tr '[:upper:]' '[:lower:]')
+  - echo "PROJECT_TITLE:${PROJECT_TITLE}"
+
+  ## Vars for TFC API call
+  - export ENV=${ENVIRONMENT}
+  - echo "ENV=${ENV}"
+  - export SUBSCRIPTION_ID=${SUBSCRIPTION_ID}
+  - echo "SUBSCRIPTION_ID=${SUBSCRIPTION_ID}"
+  - export TFC_ADDR="app.terraform.io"
+  - echo "TFC_ADDR=${TFC_ADDR}"
+  - export TFC_ORG=${TFC_ORG}
+  - echo "TFC_ORG=${TFC_ORG}"
+  - export TFC_SSHKEY_NAME=${TFC_SSHKEY_NAME}
+  - echo "TFC_SSHKEY_NAME=${TFC_SSHKEY_NAME}"
+  - export TFC_WORKSPACE="${CLOUD_SERVICE_PROVIDER}-${ASSET}-${REGION}-${ENV}-${PROJECT_TITLE}"
+  - echo "TFC_WORKSPACE=${TFC_WORKSPACE}"
+
+# Check if the variable file is set
+validate:
+  stage: validate
+  script:
+    - chmod +x ./scripts/validate.sh
+    - ./scripts/validate.sh
+  only:
+    refs:
+      - master
+
+# Either create or get the workspace ID if it already exists:
+setup_run_workspace:
+  stage: setup_workspace
+  script:
+    - source ./scripts/fetch_secrets.sh
+    - chmod +x ./scripts/create_workspace.sh
+    - chmod +x ./scripts/run_workspace.sh
+    - ./scripts/create_workspace.sh
+    - ./scripts/run_workspace.sh
+  only:
+    refs:
+      - master
+  retry:
+    max: 1
+    when: script_failure
